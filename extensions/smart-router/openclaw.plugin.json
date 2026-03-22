@@ -1,0 +1,11 @@
+{
+  "id": "smart-router",
+  "name": "Smart Router",
+  "description": "根據訊息關鍵字自動選擇最適合的模型（Haiku/Sonnet/Opus）",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

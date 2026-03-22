@@ -1,0 +1,20 @@
+{
+  "id": "conversation-logger",
+  "name": "Conversation Logger",
+  "description": "底層忠實記錄所有人類輸入與 Agent 輸出，按頻道/日期分檔存為 JSONL",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "logDir": {
+        "type": "string",
+        "description": "JSONL 記錄檔根目錄（git repo 外）"
+      },
+      "stmMaxChars": {
+        "type": "number",
+        "description": "單則訊息字元上限，超過時 reject 並通知用戶"
+      }
+    }
+  }
+}

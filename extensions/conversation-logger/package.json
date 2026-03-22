@@ -1,0 +1,7 @@
+{
+  "name": "conversation-logger",
+  "version": "1.0.0",
+  "description": "底層忠實記錄所有人類輸入與 Agent 輸出，按頻道/日期分檔存為 JSONL",
+  "main": "index.ts",
+  "type": "module"
+}

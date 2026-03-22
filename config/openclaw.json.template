@@ -1,0 +1,180 @@
+{
+  "browser": {
+    "executablePath": "/usr/bin/google-chrome-stable",
+    "headless": true,
+    "noSandbox": true
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-haiku-4-5-20251001",
+        "fallbacks": [
+          "anthropic/claude-sonnet-4-20250514",
+          "anthropic/claude-haiku-4-5-20251001",
+          "ollama/qwen3.5:27b"
+        ]
+      },
+      "models": {
+        "anthropic/claude-opus-4-6": {
+          "params": { "cacheRetention": "long" }
+        },
+        "anthropic/claude-sonnet-4-20250514": {
+          "params": { "cacheRetention": "long" }
+        },
+        "anthropic/claude-haiku-4-5-20251001": {}
+      },
+      "workspace": "__HOME__/.openclaw/workspace",
+      "contextTokens": 65536,
+      "contextPruning": {
+        "mode": "cache-ttl",
+        "ttl": "55m",
+        "keepLastAssistants": 2
+      },
+      "compaction": {
+        "mode": "safeguard",
+        "maxHistoryShare": 0.3,
+        "reserveTokensFloor": 15000,
+        "recentTurnsPreserve": 2,
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 4000,
+          "prompt": "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store.",
+          "systemPrompt": "Session nearing compaction. Store durable memories now."
+        }
+      },
+      "heartbeat": {
+        "every": "15m",
+        "activeHours": {
+          "start": "07:00",
+          "end": "23:00",
+          "timezone": "Asia/Taipei"
+        },
+        "prompt": "Check HEARTBEAT.md and heartbeat-state.json. Follow instructions. Reply HEARTBEAT_OK if nothing needs attention."
+      },
+      "maxConcurrent": 8,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "workspace": "__HOME__/.openclaw/workspace"
+      }
+    ]
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://YOUR_OLLAMA_HOST:11434",
+        "models": [
+          {
+            "id": "qwen3.5:27b",
+            "name": "Qwen 3.5 27B (MoE)",
+            "contextWindow": 262144,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "tools": {
+    "exec": {
+      "security": "full"
+    }
+  },
+  "bindings": [],
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "cron": {
+    "enabled": true
+  },
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": "YOUR_DISCORD_BOT_TOKEN",
+      "groupPolicy": "allowlist",
+      "streaming": "off",
+      "dmPolicy": "allowlist",
+      "allowFrom": ["*"],
+      "dm": { "enabled": true },
+      "guilds": {
+        "*": { "requireMention": false }
+      }
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "YOUR_GATEWAY_AUTH_TOKEN"
+    }
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    }
+  },
+  "plugins": {
+    "allow": [
+      "memory-lancedb-pro",
+      "discord",
+      "smart-router",
+      "conversation-logger"
+    ],
+    "slots": {
+      "memory": "memory-lancedb-pro"
+    },
+    "entries": {
+      "discord": { "enabled": true },
+      "memory-lancedb-pro": {
+        "enabled": true,
+        "config": {
+          "embedding": {
+            "provider": "openai-compatible",
+            "apiKey": "YOUR_EMBEDDING_API_KEY",
+            "model": "nomic-embed-text",
+            "baseURL": "http://YOUR_OLLAMA_HOST:11434/v1",
+            "dimensions": 768
+          },
+          "autoCapture": true,
+          "autoRecall": true,
+          "enableManagementTools": true,
+          "retrieval": {
+            "mode": "hybrid",
+            "rerank": "lightweight"
+          },
+          "smartExtraction": true,
+          "extractMinMessages": 2,
+          "extractMaxChars": 8000,
+          "sessionStrategy": "memoryReflection",
+          "sessionMemory": { "enabled": false }
+        }
+      },
+      "smart-router": { "enabled": true },
+      "conversation-logger": {
+        "enabled": true,
+        "config": {
+          "logDir": "__HOME__/.openclaw/logs/conversations",
+          "stmDir": "__HOME__/.openclaw/stm",
+          "stmMaxChars": 4000,
+          "stmWarnTurns": 15,
+          "stmHardTurns": 25
+        }
+      }
+    }
+  }
+}
