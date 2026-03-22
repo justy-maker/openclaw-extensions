@@ -1,0 +1,110 @@
+# CLAUDE.md — {{PROJECT_NAME}} 開發指引
+
+## 專案概述
+- **名稱**: {{PROJECT_NAME}}
+- **類型**: {{PROJECT_TYPE}}
+- **目標**: {{PROJECT_GOAL}}
+
+## 技術棧
+<!-- 根據專案需求填寫，例如：
+- 框架: Next.js 15+ (App Router, TypeScript strict)
+- 樣式: Tailwind CSS
+- 後端: Supabase (PostgreSQL + Auth + RLS)
+- 部署: Vercel
+-->
+
+## 開發規範
+- TypeScript strict mode（不准 `any`）
+- ESLint + Prettier
+- 命名：camelCase（變數/函數）、PascalCase（元件/型別）
+- 每個模組都要有對應測試（`*.test.ts`）
+- 每個 PR 都要有描述 + 關聯 Issue（`Closes #N`）
+- commit message 格式：`feat:`, `fix:`, `docs:`, `refactor:`, `test:`
+- 不留 `TODO`/`FIXME`，有的話開 Issue 追蹤
+
+## 架構重點
+<!-- 根據 ARCHITECTURE.md 摘要關鍵設計 -->
+
+## 注意事項
+<!-- 專案特殊注意事項 -->
+
+---
+
+## 🚦 品質 Gate（Definition of Done）
+
+**每個 PR merge 前必須全部通過，無例外。**
+
+### Gate 1: 編譯零錯誤
+- `npm run typecheck` 零錯誤零警告
+- `npm run lint` 零錯誤
+- `npm run build` 成功
+
+### Gate 2: 測試通過
+- `npm run test` 全部 PASS
+- 新功能必須附帶測試（至少涵蓋 happy path + 一個 edge case）
+- 測試不准 mock 掉被測對象本身
+
+### Gate 3: 路由與連結完整性
+- 所有 `<Link href="...">` 和 `router.push()` 的目標路徑必須有對應的 page component
+- 所有 `import` 路徑必須指向存在的檔案
+- 不允許 dead link（內部連結、external URL 都要驗）
+
+### Gate 4: DB CRUD 驗證
+- 所有 Supabase/DB 操作必須有對應 table 和 column（不允許查詢不存在的欄位）
+- INSERT/UPDATE/DELETE 必須有至少一個 integration test 或 E2E test 驗證資料實際寫入/讀取
+- RLS Policy 必須驗證（不能繞過權限存取資料）
+
+### Gate 5: E2E 關鍵路徑
+- 核心 user flow 必須有 Playwright E2E 測試
+- 包含：頁面可載入、表單可送出、資料可顯示、導航可運作
+- CI 中執行，失敗即擋 PR
+
+### Gate 6: Build + Deploy 驗證
+- `npm run build` 成功（零錯誤）
+- Preview 部署可正常存取（Vercel Preview URL）
+- 環境變數齊全（不允許 runtime 才爆 `undefined`）
+
+---
+
+## 🔄 遞迴修復協議（Auto-Fix Loop）
+
+當 CI 或品質 Gate 失敗時，自動觸發修復迴路：
+
+```
+Coder 提交 → CI 檢查 → 失敗？
+  ├─ YES → 錯誤訊息回傳 Coder → 修復 → 重新提交（retry +1）
+  │         └─ retry > 3？→ 通知 Orchestrator 介入
+  └─ NO → Review Agent 審碼 → 有問題？
+           ├─ YES → 修改建議回傳 Coder → 修復 → 重新提交
+           └─ NO → ✅ 合併
+```
+
+### 規則
+1. **最多 3 次自動修復**，超過停止並升級給 Orchestrator
+2. 每次修復只處理**當前最嚴重的錯誤**，不要一次改太多
+3. 每次 retry 必須在 commit message 註明 `fix(ci): <修了什麼>`
+4. 如果同一個錯誤連續出現 2 次，停止自動修復 → 可能是架構問題
+
+---
+
+## 🤖 Agent Teams（`.claude/agents/`）
+
+本專案使用 Claude Code Agent Teams 進行開發：
+
+### 角色
+| Agent | 檔案 | 用途 | 權限 |
+|-------|------|------|------|
+| **Coder** | `.claude/agents/coder.md` | 功能開發、bug 修復 | Read + Write + Edit + Bash |
+| **Reviewer** | `.claude/agents/reviewer.md` | Code Review、品質把關 | Read + Search + Bash（無寫入） |
+
+### 使用方式
+- 在 Claude Code CLI 中用 `/agent coder` 或 `/agent reviewer` 切換
+- Coder 負責寫碼 + 跑測試 + 推 PR
+- Reviewer 負責看 diff + 留 comment + approve/reject
+- **權限分離**：Reviewer 不能改 code，只能指出問題
+
+### 與 Orchestrator 的協作
+- Orchestrator（阿福）負責：拆 task、分配給 agent、監控進度、處理升級
+- Coder 完成一個 task → Orchestrator 觸發 Reviewer
+- Reviewer 通過 → Orchestrator merge + 分配下一個 task
+- Reviewer 拒絕 → Orchestrator 把 comment 轉給 Coder 修

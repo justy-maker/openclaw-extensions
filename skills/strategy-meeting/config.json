@@ -1,0 +1,23 @@
+{
+  "meta": {
+    "name": "strategy-meeting",
+    "version": "1.0.0",
+    "description": "多角色 Agent 策略會議",
+    "language": "zh-TW"
+  },
+  "roles": {
+    "ceo":  { "name": "阿福", "emoji": "🐱", "title": "CEO",  "model": "claude",  "promptFile": "roles/ceo.md" },
+    "cto":  { "name": "小工", "emoji": "🔧", "title": "CTO",  "model": "claude",  "promptFile": "roles/cto.md" },
+    "cmo":  { "name": "大聲", "emoji": "📣", "title": "CMO",  "model": "gemini",  "promptFile": "roles/cmo.md" },
+    "cfo":  { "name": "算盤", "emoji": "💰", "title": "CFO",  "model": "gpt",     "promptFile": "roles/cfo.md" },
+    "cdo":  { "name": "小喵", "emoji": "🎨", "title": "CDO",  "model": "gemini",  "promptFile": "roles/cdo.md" },
+    "cso":  { "name": "阿業", "emoji": "💼", "title": "CSO",  "model": "gpt",     "promptFile": "roles/cso.md" },
+    "cco":  { "name": "小幫", "emoji": "🎧", "title": "CCO",  "model": "claude",  "promptFile": "roles/cco.md" }
+  },
+  "defaults": {
+    "mvpRoles": ["cto", "cmo", "cfo"],
+    "gptModel": "gpt-4o",
+    "timeout": 180,
+    "debate": false
+  }
+}

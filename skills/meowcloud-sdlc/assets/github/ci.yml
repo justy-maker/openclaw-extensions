@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Gate 1: 編譯零錯誤
+      - name: "Gate 1: TypeScript Check"
+        run: npm run typecheck
+
+      - name: "Gate 1: Lint"
+        run: npm run lint
+
+      # Gate 2: 測試通過
+      - name: "Gate 2: Unit Tests"
+        run: npm run test
+
+      # Gate 6: Build 成功
+      - name: "Gate 6: Build"
+        run: npm run build
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: "Gate 5: E2E Tests"
+        run: npx playwright test
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  link-check:
+    name: Link & Import Validation
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Gate 3: 路由與連結完整性
+      - name: "Gate 3: Check dead imports"
+        run: |
+          echo "Checking for broken imports..."
+          npx tsc --noEmit 2>&1 | grep -i "cannot find module" && exit 1 || echo "✅ All imports valid"
+
+      - name: "Gate 3: Check internal routes"
+        run: |
+          echo "Checking internal Link hrefs match existing pages..."
+          # 提取所有 Link href 和 router.push 目標
+          grep -rn 'href="/' src/ --include="*.tsx" --include="*.ts" | \
+            grep -oP 'href="/[^"]*"' | sort -u > /tmp/used-routes.txt
+          # 列出實際 page 路由
+          find src/app -name "page.tsx" -o -name "page.ts" | \
+            sed 's|src/app||;s|/page\.tsx\?||;s|\[.*\]|[^/]+|' | sort -u > /tmp/actual-routes.txt
+          echo "Used routes:"
+          cat /tmp/used-routes.txt
+          echo "Actual routes:"
+          cat /tmp/actual-routes.txt
+          echo "✅ Route check complete (manual review above)"

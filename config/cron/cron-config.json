@@ -1,0 +1,9 @@
+{
+  "_comment": "初始化時填入你的 Discord 頻道與用戶 ID。安裝腳本會用這些值替換 jobs.json 中的佔位符。",
+  "delivery": {
+    "ownerUserId":            "YOUR_DISCORD_USER_ID",
+    "mainChannelId":          "YOUR_MAIN_CHANNEL_ID",
+    "memoryChannelId":        "YOUR_MEMORY_CHANNEL_ID",
+    "gymBookingChannelId":    "YOUR_GYM_BOOKING_CHANNEL_ID"
+  }
+}

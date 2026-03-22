@@ -1,0 +1,31 @@
+{
+  "project_name": "My Project",
+  "company_name": "My Company",
+  "version": "0.1.0",
+  "confidential": true,
+  "confidential_label": "CONFIDENTIAL",
+  "language": "zh-TW",
+  "logo": null,
+  "logo_width": "160px",
+  "logo_comment": "建議尺寸：400x100px PNG (透明背景) 或 SVG。寬高比 4:1 最佳。",
+  "theme": "default",
+  "custom_css": null,
+  "page_size": "A4",
+  "margin": {
+    "top": "25mm",
+    "bottom": "25mm",
+    "left": "20mm",
+    "right": "20mm"
+  },
+  "header_right": "{document_title}",
+  "footer_center": "— {page} —",
+  "font_family": "Noto Sans TC, Noto Sans, sans-serif",
+  "code_font": "JetBrains Mono, Fira Code, monospace",
+  "accent_color": "#2563EB",
+  "phases": {
+    "0": ["docs/PRD.md"],
+    "1": ["docs/PRD.md", "docs/ARCHITECTURE.md", "docs/TASKS.md", "docs/TEST-PLAN.md", "docs/INSTALL-GUIDE.md", "DECISIONS.md"],
+    "2": ["docs/PRD.md", "docs/ARCHITECTURE.md", "docs/TASKS.md", "docs/TEST-PLAN.md", "docs/TEST-REPORT.md", "docs/INSTALL-GUIDE.md", "docs/CHANGELOG.md", "DECISIONS.md"],
+    "3": ["docs/PRD.md", "docs/ARCHITECTURE.md", "docs/TASKS.md", "docs/TEST-PLAN.md", "docs/TEST-REPORT.md", "docs/USER-GUIDE.md", "docs/INSTALL-GUIDE.md", "docs/CHANGELOG.md", "DECISIONS.md"]
+  }
+}

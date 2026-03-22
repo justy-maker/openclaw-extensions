@@ -1,4 +1,133 @@
 {
   "version": 1,
-  "jobs": []
+  "_comment": "佔位符說明：{{OWNER_USER_ID}} {{MAIN_CHANNEL_ID}} {{MEMORY_CHANNEL_ID}} {{GYM_BOOKING_CHANNEL_ID}} 由 install.sh 讀取 cron-config.json 後自動替換",
+  "jobs": [
+    {
+      "id": "daily-memory-analysis",
+      "name": "🧠 每晚記憶分析 & LanceDB 寫入",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 21 * * *",
+        "tz": "Asia/Taipei"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "讀取今天的 memory/YYYY-MM-DD.md，分析並提煉核心決策、經驗教訓、模式識別，生成雙層 LanceDB 記憶條目（技術層+原則層），每條 <500 字，importance ≥ 0.8。最後生成每日分析報告到 memory/summaries/。",
+        "model": "anthropic/claude-sonnet-4-20250514"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "user:{{OWNER_USER_ID}}",
+        "to": "user:{{OWNER_USER_ID}}"
+      }
+    },
+    {
+      "id": "daily-evolution-workflow",
+      "name": "🚀 每日進化工作流",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 1 * * *",
+        "tz": "Asia/Taipei"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "【凌晨交接】\n\n讀取交接檔案（OPPORTUNITIES.md / THINKING.md / EXPERIMENTS.md / memory/channels/direct-message.md）\n\n執行工作流（01:00-06:00）：\n1. [01:00-02:00] 市場掃描 → 更新 OPPORTUNITIES.md\n2. [02:00-03:00] 思維反思 → 更新 THINKING.md\n3. [03:00-04:00] 實驗檢查 → 更新 EXPERIMENTS.md\n4. [04:00-05:30] 產品孵化 → 存到 products/\n5. [05:30-06:00] 報告準備 → 生成 logs/daily-report-YYYY-MM-DD.md",
+        "model": "anthropic/claude-sonnet-4-20250514"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "user:{{OWNER_USER_ID}}",
+        "bestEffort": true
+      }
+    },
+    {
+      "id": "thinking-loop",
+      "name": "🧠 思考輪 (Opus)",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8,10,12,14,16,18,20 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "執行思考輪：\n1. 讀取 projects/ah-fu-evolution/THINKING-LOOP-PROMPT.md（完整指令）\n2. 依照 Step 1-7 逐步執行：讀取上下文 → 消化回報 → 四維度思考（🔙回顧/🔮推演/🔗交叉/❓提問）→ 產出 TODO → 派送 subAgent → 記錄\n3. 每次只派送 1 個 subAgent（串行）\n4. 重大洞察通知 {{OWNER_USER_ID}}（安靜時段 23:00-07:00 不通知）",
+        "model": "anthropic/claude-opus-4-6",
+        "thinking": "high",
+        "timeoutSeconds": 1200
+      },
+      "delivery": {
+        "mode": "none"
+      }
+    },
+    {
+      "id": "daily-knowledge-distill",
+      "name": "📰 每日知識蒸餾",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8 * * *",
+        "tz": "Asia/Taipei"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "每日知識蒸餾系統：蒐集 AI、投資、前沿技術、創業、自媒體、未來趨勢、商業分析等領域最新資訊。深度分析 + 行動建議。結果寫入 projects/daily-intel/results/YYYY-MM-DD.md"
+      },
+      "delivery": {
+        "mode": "none"
+      }
+    },
+    {
+      "id": "channel-memory-sync",
+      "name": "📝 頻道記憶自動同步",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 23 * * *",
+        "tz": "Asia/Taipei"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "同步頻道記憶：找出 memory/channels/ 下最久未更新的 3 個頻道 MD，讀取該頻道今天的對話內容，更新記憶摘要並寫回檔案。"
+      },
+      "delivery": {
+        "mode": "none"
+      }
+    },
+    {
+      "id": "weekly-gym-booking",
+      "name": "🏋️ 週六自動搶位",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "59 13 * * 6",
+        "tz": "Asia/Taipei"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "執行每週六自動搶位：\n1. cd projects/mohot-booking && python3 weekly_grab.py 300\n2. 把結果發到健身預約頻道\n3. 如果有失敗的，額外 tag 相關使用者",
+        "model": "anthropic/claude-haiku-4-5-20251001",
+        "timeoutSeconds": 360
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "channel:{{GYM_BOOKING_CHANNEL_ID}}",
+        "to": "channel:{{GYM_BOOKING_CHANNEL_ID}}"
+      }
+    }
+  ]
 }
