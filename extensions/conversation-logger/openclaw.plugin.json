@@ -11,9 +11,21 @@
         "type": "string",
         "description": "JSONL 記錄檔根目錄（git repo 外）"
       },
+      "stmDir": {
+        "type": "string",
+        "description": "STM 短期記憶檔案目錄"
+      },
       "stmMaxChars": {
         "type": "number",
         "description": "單則訊息字元上限，超過時 reject 並通知用戶"
+      },
+      "stmWarnTurns": {
+        "type": "number",
+        "description": "對話輪數警告門檻"
+      },
+      "stmHardTurns": {
+        "type": "number",
+        "description": "對話輪數強制截斷門檻"
       }
     }
   }
