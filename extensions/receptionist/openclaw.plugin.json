@@ -1,0 +1,17 @@
+{
+  "id": "receptionist",
+  "name": "Receptionist",
+  "description": "接線生：所有訊息先由 Haiku 分類，派發獨立 worker session（Sonnet/Opus）並維護 Discord 狀態看板",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "haikuModel":             { "type": "string" },
+      "sonnetModel":            { "type": "string" },
+      "opusModel":              { "type": "string" },
+      "statusUpdateIntervalMs": { "type": "number" },
+      "boardTtlMs":             { "type": "number" }
+    }
+  }
+}

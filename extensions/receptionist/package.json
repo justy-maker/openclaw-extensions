@@ -1,0 +1,7 @@
+{
+  "name": "receptionist",
+  "version": "1.0.0",
+  "description": "Haiku 接線生 + 獨立 worker session 派發 + Discord 狀態看板",
+  "main": "index.ts",
+  "type": "module"
+}
