@@ -1,0 +1,492 @@
+================================================================================
+MIS 電腦與網路管理 - 對話與處理記錄
+================================================================================
+
+================================================================================
+日期：2025-12-23 15:38
+問題描述：初始化 MIS 資料夾
+處理過程：
+  1. 檢查資料夾狀態（空資料夾）
+  2. 建立 CLAUDE.md 專案說明檔
+  3. 建立 claude.config.json 專案配置檔
+  4. 建立 conversation.log 對話記錄檔
+結果：完成初始化
+================================================================================
+
+================================================================================
+日期：2025-12-23 15:45
+問題描述：系統記憶體經常滿載（32GB 卻只剩 0.3GB 可用）
+處理過程：
+  1. 建立 check_memory.ps1 檢查記憶體使用狀況
+  2. 建立 check_vm.ps1 檢查 VM 相關服務
+  3. 發現 Hyper-V 服務運行中（HvHost, vmcompute）
+  4. 發現 Docker Desktop、VMware 已安裝（服務已停止）
+  5. 發現多個可停用的服務和啟動程式
+
+分析結果：
+  - 總記憶體: 31.1 GB (2x16GB)
+  - 已使用: 30.8 GB
+  - 可用: 0.3 GB
+
+  記憶體大戶：
+  - Memory Compression: 543 MB
+  - MsMpEng (Defender): 195 MB
+  - node: 149 MB
+  - Chrome/Edge: 多個實例共約 200+ MB
+
+  運行中的 VM 服務：
+  - HvHost (Hyper-V Host)
+  - vmcompute (Hyper-V Compute)
+
+  建議移除/停用：
+  [高優先] Hyper-V 功能、Docker Desktop、VMware
+  [中優先] WSearch, SysMain, DiagTrack 服務
+  [啟動項] GoogleDriveFS(x3), OneDrive, Docker, Edge自動啟動
+  [功能] Widgets, Copilot
+
+結果：待處理 - 等待用戶確認要移除的項目
+================================================================================
+
+================================================================================
+日期：2026-03-15 ~ 2026-03-16
+問題描述：openclaw AI Gateway 系統優化、.50/.73 伺服器維護
+機器清單：
+  - 192.168.2.50（Jetson AGX Thor，64GB 統一記憶體，llama.cpp + Ollama）
+  - 192.168.2.73（Linux x86，openclaw gateway 主機）
+
+處理項目 1：openclaw 頻道記憶體自動同步
+  - 建立 cron job（jobs.json）：每天 23:00 自動同步最久未更新的 3 個頻道 MD
+  - 建立統一頻道 MD 模板（memory/channels/_TEMPLATE.md）
+  - 確認 cron timer 已 armed（2026-03-15 23:00:00）
+
+處理項目 2：openclaw Prompt Caching + Context Pruning
+  - 新增 contextPruning: {mode:cache-ttl, ttl:55m, keepLastAssistants:2}
+  - 新增 cacheRetention:"long" 到 Sonnet 與 Opus 的 params 區塊
+  - 問題：cacheRetention 放在 model entry 根層級導致 openclaw crash
+  - 修正：移入 params: {cacheRetention:"long"} 內層
+
+處理項目 3：_setup/ 一鍵還原基礎建設
+  - 建立 ~/.openclaw/workspace/_setup/ 目錄
+  - 內含：README.md、install.sh、openclaw.json.template、.env.template
+  - 內含：cron/jobs.json、openclaw-gateway.service
+  - 推送至 GitHub（justy-maker/openclaw-workspace）
+
+處理項目 4：SOUL.md 智能模型路由 IRON LAW
+  - 重寫 SOUL.md，加入主 Agent（Haiku）薄路由層架構
+  - 規則：任何非簡單問答任務，3 秒內先 ack，再 spawn subagent
+  - 關鍵字自動升級：架構/分析/除錯 → Sonnet；深度研究/策略 → Opus
+  - 新增 @haiku/@sonnet/@opus/@auto 指定語法
+  - 新增 subagent 進度回報規則（每步驟必須發訊息，不得沉默 > 30s）
+
+處理項目 5：contextTokens 擴大 + qwen3.5:35b contextWindow
+  - contextTokens: 32000 → 65536（全域）
+  - qwen3.5:35b 加入 contextWindow:262144, maxTokens:8192
+
+處理項目 6：.73 RDP 遠端登入修復
+  - 問題：gnome-remote-desktop Session Already Running
+  - 嘗試：xrdp → port 3389 衝突、GNOME Wayland 黑屏
+  - 最終方案：保留 gnome-remote-desktop，設定 Linger=yes（logout 不影響 openclaw）
+  - 設定 grdctl --system rdp set-credentials 完成憑證設定
+
+處理項目 7：Chromium 安裝於 .73
+  - 安裝 chromium-browser（snap）
+  - openclaw.json browser.executablePath 更新
+
+處理項目 8：Qwen3.5:35b 安裝於 .50
+  - 研究 Qwen3.5 規格：MoE 架構，35B total/3B active，262K context
+  - ollama pull qwen3.5:35b（23GB）
+  - 升級 Ollama 0.12.10 → 0.18.0
+  - 速度測試結果：3.72 t/s（未達 10 t/s 目標）
+  - 原因：think:false 雖關閉 Extended Thinking，但模型本身較重
+
+處理項目 9：Ollama GPU 修復於 .50
+  - 發現 /etc/systemd/system/ollama.service.d/override.conf 明確設定：
+    CUDA_VISIBLE_DEVICES=（空）、OLLAMA_NUM_GPU=0 → GPU 完全停用
+  - 修正：移除上述兩行，僅保留 OLLAMA_HOST=0.0.0.0
+  - 結果：offloaded 29/29 layers to GPU（已驗證）
+
+處理項目 10：llama.cpp 更新於 .50
+  - 原版本：build 1 (463b6a9)，2026-03-13，不支援 qwen3.5 架構
+  - 錯誤：qwen35moe.rope.dimension_sections wrong array length
+  - 執行 git pull + cmake --build（背景編譯約 20 分鐘）
+  - 新版本：build 23 (b9da444)，含 Qwen3.5/Qwen3.5MoE tensor 支援
+  - 重啟 port 8080 llama-server（仍服務 gemma3:27b）
+
+處理項目 11：qwen3.5:27b 安裝與速度測試
+  - ollama pull qwen3.5:27b（17GB）
+  - 速度測試（GPU 模式）：
+    qwen3.5:27b  → eval: 9.57 t/s | prompt: 99.76 t/s | tokens: 264
+    gemma3:27b   → eval: 10.79 t/s | prompt: 36.61 t/s | tokens: 269
+  - 結論：兩者速度相當，qwen3.5:27b 在長 context 優勢明顯（262K vs 128K）
+  - 加入 openclaw model 列表：ollama/qwen3.5:27b
+
+處理項目 12：.73 瀏覽器工具修復
+  - 問題：snap Chromium 冷啟動 ~8 秒，超過 openclaw browser tool timeout
+  - playwright-core 1.58.2 已內建於 openclaw node_modules（運作正常）
+  - 解法：移除 snap Chromium，改裝 Google Chrome 146 官方 deb
+  - 結果：啟動時間 8s → 1.5s，browser tool 恢復正常
+  - openclaw.json executablePath 更新為 /usr/bin/google-chrome-stable
+
+結果：全部完成
+================================================================================
+
+================================================================================
+日期：2026-03-17 09:00 ~ 11:00
+問題描述：192.168.2.73 OpenClaw compact 問題觀察與系統維護
+處理項目：
+
+1. Context 超載診斷
+   - 症狀：Context 94k/66k (143%)，Compactions: 35，Cache hit: 10%
+   - 根因：cacheWrite 84k tokens，system prompt + skillsSnapshot 過大
+   - 處理：分析 sessions.json，確認 totalTokens:93671, contextTokens:65536
+   - 結果：用戶自行執行 /reset 重置 session
+
+2. Session 清理腳本執行
+   - 執行 cleanup-large-sessions.py
+   - 清除 2 個大型 session 檔（共 1.33MB）
+   - 備份至 sessions/backups/20260317-095028/
+
+3. Cron Job 修復（channel-memory-sync）
+   - 問題：jobs.json 為空，job 定義遺失
+   - 問題：delivery 格式錯誤（"1475026806762508419" → "channel:1475026806762508419"）
+   - 修復：從 jobs.json.bak 還原並修正格式，下次執行設為 2026-03-17 23:00
+   - 待確認：阿福查詢仍看不到 cron job，可能需要 gateway restart
+
+4. SOUL.md / IRON LAW 路由效果研究
+   - 確認問題：IRON LAW 寫在記憶檔，依賴 Haiku 自主路由，效果不穩定
+   - 研究 OpenClaw bindings 架構：bindings 僅支援 channel/source 層級路由
+   - 不支援 content-based keyword 路由（架構限制）
+   - 結論：下次處理，評估方案
+
+5. USER.md 更新上傳
+   - 用戶修改後上傳至 .73:/home/ysi/.openclaw/workspace/USER.md
+
+6. 下載 SOUL.md / IDENTITY.md / USER.md 至 D:\Root\MIS\ 備查
+
+結果：部分完成
+
+後續處理（同日繼續）：
+
+10. Smart Router Bug 修復與驗證
+    - 問題：頻道 1482391796456755274 出現 "Unknown model: anthropic/anthropic/claude-opus-4-6"
+    - 根因：modelOverride 傳入完整 "anthropic/claude-opus-4-6"，
+      加上 providerOverride:"anthropic" 導致 provider 前綴被加兩次
+    - 修正：移除 providerOverride，modelOverride 只傳 "claude-opus-4-6"
+    - 驗證：sessions.json 確認 model: claude-opus-4-6，outputTokens: 1810（正常回應）
+    - 結果：✅ 智慧路由正常運作
+
+9. Smart Router Plugin 建立
+   - 研究 OpenClaw Plugin SDK，確認 before_model_resolve hook 支援 modelOverride
+   - 建立 /home/ysi/.openclaw/extensions/smart-router/ plugin
+   - 路由規則：
+     - Opus：深度研究/策略/企劃/創意/跨領域/多步驟 + @opus
+     - Sonnet：架構/設計/除錯/debug/重構/資安/商業決策/系統 + @sonnet
+     - Haiku 保留：@haiku/簡單問答（預設不 override）
+   - 加入 openclaw.json plugins.allow + plugins.entries
+   - Gateway restart，確認 log：smart-router: registered (before_model_resolve hook active)
+   - 備份至 D:\Root\MIS\smart-router-index.ts / smart-router-plugin.json
+
+7. Gateway Restart
+   - systemctl --user restart openclaw-gateway
+   - PID 2741521，Active running 10:20:44 CST
+   - 目的：重載 cron jobs.json，讓阿福可見 channel-memory-sync job
+
+8. SOUL.md 精簡（IRON LAW 路由架構移除）
+   - 決策：IRON LAW 自動路由依賴 Haiku 自主判斷，效果不穩定，已廢棄
+   - 根本原因：OpenClaw bindings 僅支援 channel/source 層級路由，不支援 content-based routing
+   - 新方針：改為明確 @指令手動路由（@haiku/@sonnet/@opus）
+   - SOUL.md 由 4.6KB → 1.3KB（移除 IRON LAW Steps 1-3 + 範例流程）
+   - 已上傳至 .73:/home/ysi/.openclaw/workspace/SOUL.md
+================================================================================
+
+================================================================================
+日期：2026-03-18 22:00 ~ 23:00
+問題描述：conversation-logger Plugin 建立（Layer 0 原始記錄）
+
+架構說明：
+  - Layer 0：底層忠實記錄（本次實作）
+  - Layer 1：STM 短期記憶（待設計）
+  - Layer 2：LTM lancedb 長期記憶（memory-lancedb-pro 已有）
+
+建立檔案：
+  - /home/ysi/.openclaw/extensions/conversation-logger/index.ts
+  - /home/ysi/.openclaw/extensions/conversation-logger/openclaw.plugin.json
+  - /home/ysi/.openclaw/extensions/conversation-logger/package.json
+  - 備份至 D:\Root\MIS\conversation-logger\
+
+Plugin 功能：
+  - message_received hook：記錄用戶輸入，超過 stmMaxChars 時 reject 並通知
+  - before_message_write hook：記錄 agent 輸出（role != "user"），計算 latencyMs
+  - JSONL 格式，按頻道分資料夾，按日期分檔
+  - 儲存路徑：/home/ysi/.openclaw/logs/conversations/channels/{source}-{channelId}/YYYY-MM-DD.jsonl
+  - 此 logs 資料夾不推 git
+
+Config 參數（openclaw.json）：
+  - logDir: "/home/ysi/.openclaw/logs/conversations"
+  - stmMaxChars: 4000
+
+JSONL 記錄格式：
+  user: {"ts":..., "role":"user", "from":"...", "channel":"...", "conversationId":"...", "content":"..."}
+  agent: {"ts":..., "role":"agent", "channel":"...", "conversationId":"...", "content":"...", "latencyMs":...}
+
+技術細節：
+  - 使用 message_received + before_message_write 兩個 hook
+  - before_message_write 取代原設計的 message_sent（正確 hook 名稱）
+  - latencyMs 透過 pendingTs Map 計算（conversationId 為 key）
+  - fs.appendFileSync + mkdirSync 實作，錯誤不影響正常流程
+
+結果：
+  - Gateway 重啟，plugin 已載入（無 TypeScript 編譯錯誤）
+  - 等待實際訊息觸發驗證 JSONL 寫入
+
+待辦：
+  - 驗證 JSONL 檔案實際生成
+  - 設計 STM（Layer 1）hard turn limit + 置換邏輯
+================================================================================
+
+================================================================================
+日期：2026-04-09 22:00 ~ 23:15
+問題描述：receptionist plugin worker session 識別錯誤 + Discord DM 看板失敗
+
+症狀：
+  - 用戶「啟用 Meta 思考輪」→ 阿福寫出規劃文字後沉默，沒有任何 tool 執行結果
+  - log 顯示 board update failed: Unknown Channel 每 20 秒一次
+  - Worker (qwen3.5:27b) timeout：failoverReason=timeout，fallbackConfigured=false
+
+根因一：Worker session key 識別失敗
+  - receptionist 使用 worker:{mainKey}:{taskId} 派發 worker
+  - OpenClaw 內部將 worker session key 轉換：移除 worker: 前綴並全部小寫
+  - 例：worker:agent:main:discord:direct:123:T9VNF → agent:main:discord:direct:123:t9vnf
+  - isWorkerSession() 檢查 worker: 前綴，實際 key 已無前綴 → 判斷失敗
+  - 後果：worker session 不套用 modelOverride，fallback 到全域預設（qwen3.5:27b）
+           agent_end 也無法識別 worker，重複派發新 worker
+
+根因二：Discord DM recipient 格式錯誤
+  - 用戶從 DM 傳訊 → session key 格式為 discord:direct:{userId}
+  - discordChannelId 提取到的是 User ID（非 channel ID）
+  - sendMessageDiscord 傳入 channel:{userId} → Discord API：Unknown Channel
+  - 狀態看板每 20s timer 打一次，反覆失敗
+
+根因三：Worker timeout（qwen3.5:27b）
+  - qwen3.5:27b 傾向先寫規劃文字（"步驟如下..."）再嘗試 tool call
+  - 在 Jetson AGX Thor 上生成速度慢，~8 分鐘後 streaming 出規劃文字
+  - 繼續嘗試 tool call 但在 ~22:59 超時（總計約 10 分鐘）
+
+修正一：Worker session key 識別改為 task ID suffix 匹配
+  - 新增 workerModelByTaskId Map（taskId.toLowerCase() → model）
+  - 新增 workerTaskInfo Map（taskId.toLowerCase() → {boardKey, workerSessionKey}）
+  - findWorkerModel()：檢查 sessionKey.toLowerCase().endsWith(':${taskId}')
+  - findWorkerTask()：同上，供 subagent_ended 使用
+  - 移除舊 isWorkerSession() 在 agent_end/subagent_ended 的判斷依賴
+
+修正二：ChannelBoard 加入 discordSessionType
+  - 介面新增 discordSessionType: "channel" | "direct" | "group"
+  - getOrCreateBoard() 新增第三個參數
+  - discordRecipient() helper：direct session 用 user:{id}，其他用 channel:{id}
+
+修正三：sonnetModel 換成 qwen2.5-coder:32b
+  - qwen2.5-coder:32b 針對程式與工具呼叫訓練，傾向直接 tool call 不寫計畫文字
+  - openclaw.json plugins.entries.receptionist.config.sonnetModel 改為 qwen2.5-coder:32b
+
+部署：
+  - scp extensions/receptionist/index.ts → .73:/home/ysi/.openclaw/extensions/receptionist/
+  - openclaw.json 更新 sonnetModel（直接 python3 修改）
+  - systemctl --user restart openclaw-gateway（PID 302318，23:14 啟動）
+  - 確認 log：receptionist: registered (Haiku gateway + independent worker sessions)
+
+Commit：
+  - 968fd79 fix(receptionist): 修正 worker session key 識別與 DM 收件人格式
+
+結果：✅ 已部署，待測試確認 worker 正確使用工具
+
+================================================================================
+日期：2025-12-23 16:00
+問題描述：徹底移除 Hyper-V 和 VM 相關服務
+處理過程：
+  1. 檢查發現 Hypervisor 仍在運行（HvHost, vmcompute 服務 Running）
+  2. 建立 remove_hyperv.bat 清除腳本
+  3. 建立 remove_vmware_services.bat 清除腳本
+  4. 用戶手動移除 Docker Desktop
+  5. 用戶手動執行 Hyper-V 移除
+
+執行的操作：
+  - Docker Desktop: 已手動移除
+  - Hyper-V: 已手動移除/停用
+  - VMware: 服務已停用
+
+結果：完成 - 等待重新開機後生效
+備註：重開機後需再次檢查記憶體使用狀況確認改善
+================================================================================
+
+================================================================================
+日期：2026-03-20 22:31
+問題描述：192.168.2.73 OpenClaw Gateway 當機（假死）
+
+症狀：
+  - Gateway 運行 12 小時後停止回應
+  - InteractionEventListener timed out after 120000ms
+  - Node process 記憶體 3.0GB（peak）
+
+根因：
+  - Session 無上限增長，event loop 被卡住
+  - Compaction safeguard 持續取消壓縮
+
+處理：
+  - systemctl --user restart openclaw-gateway
+  - 重啟後記憶體降至 510MB，恢復正常
+
+結果：✅ 完成
+================================================================================
+
+================================================================================
+日期：2026-03-22 系統巡查 + openclaw-extensions 建立
+
+處理項目 1：系統巡查
+  - Gateway 狀態：正常（02:56 啟動，14h 運行，記憶體 1.5GB）
+  - Cron Jobs：6 個全部 lastRunStatus: ok，consecutiveErrors: 0
+  - 最大 session：2.7MB / 1249 records（有壓縮，可控）
+  - 警告：一個 Unknown Channel 錯誤（頻道 ID 已失效）
+
+處理項目 2：建立 openclaw-extensions 倉庫
+  - 決策：放棄 fork openclaw，改以 extension 專案方式維護
+  - 建立 GitHub repo：justy-maker/openclaw-extensions
+  - 本機路徑：D:\Root\justy-maker\openclaw-extensions
+
+  倉庫內容：
+  ├── install.sh                   一鍵安裝腳本（含 LanceDB 安裝提醒）
+  ├── config/
+  │   ├── openclaw.json.template   去除敏感資訊的設定範本
+  │   ├── openclaw-gateway.service.template
+  │   └── cron/
+  │       ├── cron-config.json     delivery 接口集中設定（Discord ID）
+  │       └── jobs.json            5 個 cron job 範本（含佔位符替換）
+  ├── extensions/
+  │   ├── smart-router/            關鍵字路由 Haiku/Sonnet/Opus
+  │   └── conversation-logger/    Layer 0 記錄 + STM Phase 1（新）
+  ├── skills/
+  │   ├── meowcloud-sdlc          自製 SDLC 流程
+  │   ├── skill-vetting           自製安全掃描
+  │   ├── three-brain             自製三方諮詢（Claude/Gemini/GPT）
+  │   └── strategy-meeting        自製公司策略會議
+  ├── templates/workspace/
+  │   ├── SOUL / AGENTS / HEARTBEAT / IDENTITY / USER .md
+  │   └── memory/channels/_TEMPLATE.md
+  └── docs/
+      ├── stm-phase1-spec.md      STM Phase 1 規格文件
+      └── memory-rules.md         LanceDB 記憶系統規則
+
+處理項目 3：conversation-logger STM Phase 1 實作
+  - 功能：per-channel 短期記憶告警，防止 session 無限增長
+  - 狀態檔：~/.openclaw/stm/{channelId}.json（turns + lastActivityTs）
+  - 軟警告（≥15 輪）：注入 [⚠️ STM 提醒] 前綴
+  - 硬限制（≥25 輪）：reject 訊息並顯示 /reset 操作說明
+  - 重置條件：/reset 或 /new 指令、閒置超過 120 分鐘
+  - Cron session 不計 turn
+  - 部署：scp 至 .73，gateway restart，log 確認：
+    conversation-logger: registered (Layer 0 + STM Phase 1 active)
+
+Cron Job 範本設計（cron-config.json 機制）：
+  - delivery 接口（Discord User/Channel ID）集中於 cron-config.json
+  - install.sh 用 python3 自動替換 jobs.json 中的 {{佔位符}}
+  - 避免新機器安裝時 hardcode 錯誤的 delivery 目標
+
+結果：✅ 全部完成
+================================================================================
+
+================================================================================
+日期：2026-03-23
+問題描述：架構討論 — 本地 Claude Code + 遠端操作的自主開發系統
+
+討論主題：
+  如何結合 Claude Code 的開發品質與 OpenClaw 的遠端操作便利性，
+  設計一套可離開辦公室仍能持續開發的自主系統。
+
+核心需求：
+  - 本地開發品質（Claude Code）
+  - 自主遞迴執行（不需要人守著）
+  - 遠端操作能力（Discord 介面）
+  - 走 Claude Code 訂閱 token，不額外付費 API
+
+最終架構設計：
+
+  1. 輕量 Discord Bot（純 relay，無 AI 推理）
+     - 只處理 DM 頻道（僅限本人）
+     - 收到訊息 → 呼叫 claude -p "[訊息]"
+     - 對話模式 / 執行模式 二執行緒分離
+     - 輸出分段發送（保留段落完整性，上限 1800 字）
+
+  2. Claude Code 本體（本地執行，走訂閱 token）
+     - 對話模式：純討論，不執行操作
+     - 執行模式：--dangerously-skip-permissions，盡力執行
+     - 執行原則：不中途詢問，無法完成的跳過並記錄到結尾報告
+
+  3. task.md（任務佇列）
+     - Claude Code 理解為任務時，自動寫入 task.md
+     - /loop 定時讀取 task.md，自主執行
+     - 改變或停止任務 → 直接改 task.md，不需要中斷 loop
+
+  4. /loop（內建 heartbeat）
+     - 定時觸發，讀取 task.md 執行待辦
+     - 任務完成後回報 Discord
+
+關鍵設計決策：
+  - 避免「執行中途問問題」→ 改為盡力執行 + 跳過報告模式
+  - 討論模式由使用者明確說「我們討論」觸發，Claude Code 不執行任何操作
+  - /loop 中斷方式：清空 task.md，不需要 /stop 機制
+  - 錯誤分三類：可重試 / 部分失敗 / 致命錯誤，分別處理
+
+Discord Bot 實作（Node.js + discord.js v14）：
+  - 約 60 行核心程式碼
+  - splitMessage()：智慧分段，保留段落完整性（maxLength: 1800）
+  - runClaude()：spawn claude subprocess，executionMode 控制參數
+  - sendTyping()：顯示處理中狀態
+
+結果：架構設計完成，Discord Bot 程式碼已產出，待實作
+
+後續（2026-03-24）：
+  - 已另起專案：D:\Root\justy-maker\cc-discord
+  - 狀態：進行中
+================================================================================
+
+================================================================================
+日期：2026-03-27 ~ 2026-03-29
+問題描述：192.168.2.73 OpenClaw Gateway 無法連線（VM 關機）
+
+症狀：
+  - SSH 逾時，ping 回覆來自 .41（非 .73）
+  - 重開機後 OpenClaw gateway 未自動啟動
+
+關機原因調查：
+  - journalctl -b -1 確認：3/27 11:45 spice-vdagent 連線被重設
+  - .73 為 QEMU Q35 VM（hostname: ysi-Standard-PC-Q35-ICH9-2009）
+  - 判定：宿主機關機導致 VM 被強制關閉（非 crash / OOM / kernel panic）
+  - 附帶發現：/dev/sda2 磁碟 100% 滿（/var/log/journal 4G + syslog ~1G）
+
+磁碟清理：
+  - journalctl --vacuum-time=7d → 釋出 ~3.5G
+  - journalctl --vacuum-size=500M + truncate syslog
+  - 設定永久上限：/etc/systemd/journald.conf.d/size-limit.conf
+    [Journal] SystemMaxUse=500M / MaxRetentionSec=7day
+  - 清理後可用空間：0 → 3.6G
+
+Gateway 啟動問題排查：
+  - openclaw gateway install 建立 systemd user service → 持續 SIGILL crash
+  - 診斷：QEMU CPU 2.5+ 無 AVX/AVX2，memory-lancedb-pro 的
+    lancedb.linux-x64-gnu.node（Rust 編譯，需 AVX2）觸發 SIGILL
+  - 觸發時機：開機後 cron missed job 執行，首次載入 LanceDB native module
+  - 為何之前 22 天正常：LanceDB 從未被觸發載入（無 missed cron job）
+
+暫時解法：
+  - 停用 memory-lancedb-pro（openclaw.json plugins.entries.enabled=false）
+  - 改用 cron @reboot + /home/ysi/start-openclaw.sh 啟動 gateway
+  - Gateway 恢復正常運行
+
+根治（2026-03-29）：
+  - 宿主機管理員將 .73 VM CPU 改為 host 模式（開放 AVX/AVX2/AVX-512）
+  - 重開機後確認 CPU flags 含 avx2、avx512f 等
+  - 重新啟用 memory-lancedb-pro，gateway 正常載入無 SIGILL
+  - Discord 阿福_ 已登入，cron @reboot 自動啟動確認正常
+
+結果：✅ 完全解決
+================================================================================
+
