@@ -87,20 +87,25 @@ function buildReceptionistPrompt(activeTasks: TaskEntry[]): string {
 ${taskList}
 
 ## 你的工作
-1. 用 1-2 句話禮貌回應用戶
+1. 用 1-2 句話禮貌回應用戶（不要列出命令或執行任何操作）
 2. 判斷意圖：是否與現有任務相關？
    - 若相關（補充、修改、追問）：加上 [ABORT:taskId] 標籤
    - 若無關：直接路由新任務
-3. **最後一行**必須是路由標籤，格式如下：
+3. **最後一行**必須是路由標籤，格式如下（絕對不能省略）：
 
 ## 路由標籤格式（最後一行，不得有其他文字）
 新任務：[SUMMARY:10字內描述][ROUTE:haiku|sonnet|opus]
 中止並重建：[ABORT:taskId][SUMMARY:任務描述][ROUTE:haiku|sonnet|opus]
 
-## 路由規則
-- haiku  → 你自己處理：簡單問答、查詢、翻譯、閒聊
-- sonnet → 程式、架構、除錯、系統分析、一般開發任務
-- opus   → 深度研究、策略規劃、複雜多步驟推理`;
+## 路由規則（重要）
+- haiku  → **只用於** 純文字回答、閒聊、打招呼（不需要執行任何工具或命令）
+- sonnet → 所有需要執行操作的任務：查詢、檢查、管理、程式、除錯、系統分析
+- opus   → 深度研究、策略規劃、複雜多步驟推理
+
+## 範例
+用戶：「你好」→ [SUMMARY:打招呼][ROUTE:haiku]
+用戶：「檢查 cron jobs」→ [SUMMARY:檢查cron狀態][ROUTE:sonnet]
+用戶：「分析這段程式碼」→ [SUMMARY:程式碼分析][ROUTE:sonnet]`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -375,10 +380,10 @@ export default function register(api: any) {
     if (isWorkerSession(sessionKey)) return;  // worker session end, skip
 
     // Must be a Discord main session
-    const parsed = parseDiscordFromSessionKey(sessionKey);
-    if (!parsed) return;
+    const discordParsed = parseDiscordFromSessionKey(sessionKey);
+    if (!discordParsed) return;
 
-    const { discordChannelId } = parsed;
+    const { discordChannelId } = discordParsed;
     const accountId = channelAccountId.get(discordChannelId) ?? "default";
 
     const board = getOrCreateBoard(sessionKey, discordChannelId, accountId);
@@ -400,7 +405,10 @@ export default function register(api: any) {
 
     if (!assistantText) return;
 
-    const { abortTaskId, summary, route } = parseRoutingTags(assistantText);
+    const parsed = parseRoutingTags(assistantText);
+    const { abortTaskId, summary } = parsed;
+    // If model forgot routing tags, default to sonnet (don't silently drop the request)
+    const route: RouteTarget = parsed.route ?? "sonnet";
 
     // ── Abort existing task ────────────────────────────────────────────────
     let mergedContext = "";
@@ -439,9 +447,8 @@ export default function register(api: any) {
       }
     }
 
-    // Haiku handles it directly (no worker needed)
-    if (!route || route === "haiku") {
-      // Update board if there are other running tasks
+    // Haiku handles it directly (no worker needed) — only when explicitly routed to haiku
+    if (route === "haiku") {
       if (board.tasks.some((t) => t.status === "running")) {
         await sendOrEditBoard(board);
       }
