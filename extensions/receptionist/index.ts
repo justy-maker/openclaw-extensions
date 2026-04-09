@@ -40,6 +40,7 @@ interface TaskEntry {
 interface ChannelBoard {
   mainSessionKey: string;
   discordChannelId: string;
+  discordSessionType: "channel" | "direct" | "group";
   accountId: string;
   statusMessageId?: string;
   statusChannelId?: string;
@@ -213,8 +214,10 @@ export default function register(api: any) {
 
   // boards: mainSessionKey → ChannelBoard
   const boards = new Map<string, ChannelBoard>();
-  // workerSessionKey → model  (for before_agent_start model override)
-  const workerModel = new Map<string, string>();
+  // taskId (lowercase) → model  (OpenClaw transforms session key; identify by task suffix)
+  const workerModelByTaskId = new Map<string, string>();
+  // taskId (lowercase) → { boardKey, workerSessionKey }  (for subagent_ended lookup)
+  const workerTaskInfo = new Map<string, { boardKey: string; workerSessionKey: string }>();
   // accountId per Discord channel (stored from message_received)
   const channelAccountId = new Map<string, string>(); // discordChannelId → accountId
 
@@ -223,17 +226,26 @@ export default function register(api: any) {
   function getOrCreateBoard(
     mainSessionKey: string,
     discordChannelId: string,
+    discordSessionType: "channel" | "direct" | "group",
     accountId: string
   ): ChannelBoard {
     if (!boards.has(mainSessionKey)) {
       boards.set(mainSessionKey, {
         mainSessionKey,
         discordChannelId,
+        discordSessionType,
         accountId,
         tasks: [],
       });
     }
     return boards.get(mainSessionKey)!;
+  }
+
+  /** Build Discord recipient string based on session type */
+  function discordRecipient(board: ChannelBoard): string {
+    return board.discordSessionType === "direct"
+      ? `user:${board.discordChannelId}`
+      : `channel:${board.discordChannelId}`;
   }
 
   async function sendOrEditBoard(board: ChannelBoard): Promise<void> {
@@ -252,7 +264,7 @@ export default function register(api: any) {
       } else {
         // Send new status message
         const result = await api.runtime.channel.discord.sendMessageDiscord(
-          `channel:${board.discordChannelId}`,
+          discordRecipient(board),
           text,
           { cfg: api.config, accountId: board.accountId }
         );
@@ -348,20 +360,46 @@ export default function register(api: any) {
     }
   });
 
+  // ── Worker identification helpers ─────────────────────────────────────────
+
+  /** OpenClaw may transform our session key: strip 'worker:' prefix + lowercase.
+   *  Identify workers by checking if the session ends with a known task ID. */
+  function findWorkerModel(sessionKey: string): string | undefined {
+    const lower = sessionKey.toLowerCase();
+    for (const [taskId, model] of workerModelByTaskId) {
+      if (lower.endsWith(`:${taskId}`)) return model;
+    }
+    return undefined;
+  }
+
+  function findWorkerTask(sessionKey: string): { boardKey: string; workerSessionKey: string } | undefined {
+    const lower = sessionKey.toLowerCase();
+    for (const [taskId, info] of workerTaskInfo) {
+      if (lower.endsWith(`:${taskId}`)) return info;
+    }
+    return undefined;
+  }
+
   // ── Hook: before_agent_start — set model ──────────────────────────────────
 
   api.on("before_agent_start", (_event: any, ctx: any) => {
     const sessionKey = ctx.sessionKey ?? "";
 
-    // Worker session: override to stored model
-    if (isWorkerSession(sessionKey)) {
-      const model = workerModel.get(sessionKey);
-      return model ? { modelOverride: model } : undefined;
+    // Worker session: override to the registered worker model
+    const workerMod = findWorkerModel(sessionKey);
+    if (workerMod !== undefined) {
+      api.logger.info(`receptionist: worker session ${sessionKey} → model ${workerMod}`);
+      return { modelOverride: workerMod };
     }
 
     // Only intercept Discord main sessions — leave heartbeat/cron/other runs alone
     const discordInfo = parseDiscordFromSessionKey(sessionKey);
     if (!discordInfo) return undefined;
+
+    // Skip sessions that look like sub-sessions (main session keys end with a task ID suffix)
+    // e.g. agent:main:discord:direct:123:t9vnf — the :t9vnf suffix means it's a worker
+    const parts = sessionKey.split(":");
+    if (parts.length > 5) return undefined;  // more segments than a normal session key
 
     // Main Discord session: receptionist (Haiku) + inject system context
     const board = boards.get(sessionKey);
@@ -377,7 +415,7 @@ export default function register(api: any) {
 
   api.on("agent_end", async (event: any, ctx: any) => {
     const sessionKey = ctx.sessionKey ?? "";
-    if (isWorkerSession(sessionKey)) return;  // worker session end, skip
+    if (isWorkerSession(sessionKey) || findWorkerTask(sessionKey)) return;  // worker end, skip
 
     // Must be a Discord main session
     const discordParsed = parseDiscordFromSessionKey(sessionKey);
@@ -386,7 +424,7 @@ export default function register(api: any) {
     const { discordChannelId } = discordParsed;
     const accountId = channelAccountId.get(discordChannelId) ?? "default";
 
-    const board = getOrCreateBoard(sessionKey, discordChannelId, accountId);
+    const board = getOrCreateBoard(sessionKey, discordChannelId, discordParsed.type as "channel" | "direct" | "group", accountId);
 
     // Extract last assistant message (receptionist response)
     const messages: any[] = event.messages ?? [];
@@ -469,7 +507,8 @@ export default function register(api: any) {
       return;
     }
 
-    workerModel.set(wSessionKey, model);
+    workerModelByTaskId.set(taskId.toLowerCase(), model);
+    workerTaskInfo.set(taskId.toLowerCase(), { boardKey: sessionKey, workerSessionKey: wSessionKey });
 
     const task: TaskEntry = {
       taskId,
@@ -506,13 +545,23 @@ export default function register(api: any) {
 
   api.on("subagent_ended", async (event: any, ctx: any) => {
     const workerKey = ctx.childSessionKey ?? event.targetSessionKey ?? "";
-    if (!isWorkerSession(workerKey)) return;
 
-    const mainKey = mainSessionFromWorker(workerKey);
-    const board   = boards.get(mainKey);
+    // OpenClaw may transform the worker session key (strip 'worker:' + lowercase).
+    // Use task-ID suffix matching instead of direct key comparison.
+    const taskInfo = findWorkerTask(workerKey);
+    if (!taskInfo) return;
+
+    const board = boards.get(taskInfo.boardKey);
     if (!board) return;
 
-    const task = board.tasks.find((t) => t.workerSessionKey === workerKey);
+    // Find the task by matching either the original or transformed session key
+    const lowerWorkerKey = workerKey.toLowerCase();
+    const task = board.tasks.find((t) => {
+      const lowerStored = t.workerSessionKey.toLowerCase();
+      // Match by suffix: both keys should end with :taskId
+      return lowerWorkerKey.endsWith(`:${t.taskId.toLowerCase()}`) ||
+             lowerStored === lowerWorkerKey;
+    });
     if (!task) return;
 
     const outcome  = event.outcome ?? "ok";
@@ -523,7 +572,8 @@ export default function register(api: any) {
       `receptionist: task ${task.taskId} ${task.status} (${elapsedStr(task.endedAt - task.startedAt)})`
     );
 
-    workerModel.delete(workerKey);
+    workerModelByTaskId.delete(task.taskId.toLowerCase());
+    workerTaskInfo.delete(task.taskId.toLowerCase());
     await sendOrEditBoard(board);
 
     const hasRunning = board.tasks.some((t) => t.status === "running");
