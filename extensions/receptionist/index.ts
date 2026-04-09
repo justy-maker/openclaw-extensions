@@ -252,7 +252,7 @@ export default function register(api: any) {
       } else {
         // Send new status message
         const result = await api.runtime.channel.discord.sendMessageDiscord(
-          board.discordChannelId,
+          `channel:${board.discordChannelId}`,
           text,
           { cfg: api.config, accountId: board.accountId }
         );
@@ -483,9 +483,10 @@ export default function register(api: any) {
 
     try {
       const result = await api.runtime.subagent.run({
-        sessionKey: wSessionKey,
-        message:    workerMessage,
-        deliver:    true,
+        sessionKey:     wSessionKey,
+        message:        workerMessage,
+        deliver:        true,
+        idempotencyKey: taskId,
       });
       task.runId = result.runId;
       api.logger.info(
