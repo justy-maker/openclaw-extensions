@@ -300,6 +300,29 @@ Commit：
 結果：✅ 已部署，待測試確認 worker 正確使用工具
 
 ================================================================================
+日期：2026-04-10 08:30 ~ 08:50
+問題描述：receptionist 上線驗證 + modelLabel display bug
+
+驗證結果：
+  - 用戶傳訊 → Haiku (qwen2.5:14b) 攔截並回應接線生語氣 ✅
+  - 路由標籤 [ROUTE:sonnet] → worker TKED7 派發 ✅
+  - 任務看板出現在 guild channel（Discord recipient 格式正確）✅
+
+發現問題：modelLabel() 不認識 qwen2.5-coder:32b
+  - modelLabel() 只判斷 "opus" / "sonnet"，其餘回傳 "Haiku"
+  - worker 使用 qwen2.5-coder:32b 時面板顯示 "(Haiku)" 而非 "(Coder)"
+
+修正：
+  - 新增 coder → "Coder" 判斷
+  - 新增 qwen3.5:27b / qwen3.5:35b → "Sonnet" 判斷
+  - scp + gateway restart（PID 309972，08:44 啟動）
+  - Commit 5c30be6
+
+備註：
+  - Haiku 將打招呼路由到 sonnet 是模型行為偏保守，功能正確但多耗資源
+  - 接線生整體架構已驗證可正常運作
+
+================================================================================
 日期：2025-12-23 16:00
 問題描述：徹底移除 Hyper-V 和 VM 相關服務
 處理過程：
