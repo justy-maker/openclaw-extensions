@@ -170,6 +170,8 @@ function elapsedStr(ms: number): string {
 function modelLabel(model: string): string {
   if (model.includes("opus"))   return "Opus";
   if (model.includes("sonnet")) return "Sonnet";
+  if (model.includes("coder"))  return "Coder";
+  if (model.includes("qwen3.5:27b") || model.includes("qwen3.5:35b")) return "Sonnet";
   return "Haiku";
 }
 
