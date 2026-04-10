@@ -2,8 +2,14 @@
 // Receptionist Plugin
 //
 // 架構：
-//   主 Session  → 永遠跑 Haiku（接線生）分類意圖
-//   Worker Session → 獨立 session，跑 Sonnet/Opus 執行實際任務
+//   接線生（分類器）→ qwen2.5:14b，快速分類意圖，不執行任務
+//   Worker Session  → 依路由派發不同模型：
+//     local  → qwen3.5:27b（本地，免費，日常任務預設）
+//     haiku  → claude-haiku（Anthropic，簡單但需 Claude 品質）
+//     sonnet → claude-sonnet（Anthropic，複雜任務）
+//     opus   → claude-opus（Anthropic，深度研究）
+//
+// 用戶可在訊息中加 @local/@haiku/@sonnet/@opus 強制指定 worker
 //
 // Session key 格式：
 //   主 session:  agent:main:discord:channel:{channelId}  (OpenClaw 原生格式)
@@ -16,6 +22,8 @@
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface ReceptionistConfig {
+  receptionistModel?: string;
+  localModel?: string;
   haikuModel?: string;
   sonnetModel?: string;
   opusModel?: string;
@@ -24,7 +32,7 @@ interface ReceptionistConfig {
 }
 
 type TaskStatus = "running" | "done" | "error" | "aborted";
-type RouteTarget = "haiku" | "sonnet" | "opus";
+type RouteTarget = "local" | "haiku" | "sonnet" | "opus";
 
 interface TaskEntry {
   taskId: string;
@@ -56,11 +64,13 @@ interface ParsedTags {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_HAIKU_MODEL  = "claude-haiku-4-5-20251001";
-const DEFAULT_SONNET_MODEL = "claude-sonnet-4-20250514";
-const DEFAULT_OPUS_MODEL   = "claude-opus-4-6";
+const DEFAULT_RECEPTIONIST_MODEL = "qwen2.5:14b";
+const DEFAULT_LOCAL_MODEL        = "qwen3.5:27b";
+const DEFAULT_HAIKU_MODEL        = "claude-haiku-4-5-20251001";
+const DEFAULT_SONNET_MODEL       = "claude-sonnet-4-6";
+const DEFAULT_OPUS_MODEL         = "claude-opus-4-6";
 const DEFAULT_STATUS_INTERVAL_MS = 20_000;
-const DEFAULT_BOARD_TTL_MS = 5 * 60_000;
+const DEFAULT_BOARD_TTL_MS       = 5 * 60_000;
 
 const WORKER_PREFIX = "worker:";
 
@@ -73,12 +83,8 @@ function buildReceptionistPrompt(activeTasks: TaskEntry[]): string {
       : activeTasks
           .map((t) => {
             const elapsed = Math.floor((Date.now() - t.startedAt) / 1000);
-            const modelLabel = t.model.includes("opus")
-              ? "Opus"
-              : t.model.includes("sonnet")
-              ? "Sonnet"
-              : "Haiku";
-            return `- [${t.taskId}] ${t.summary}（${modelLabel}，已執行 ${elapsed}s）`;
+            const label = modelLabel(t.model);
+            return `- [${t.taskId}] ${t.summary}（${label}，已執行 ${elapsed}s）`;
           })
           .join("\n");
 
@@ -95,18 +101,23 @@ ${taskList}
 3. **最後一行**必須是路由標籤，格式如下（絕對不能省略）：
 
 ## 路由標籤格式（最後一行，不得有其他文字）
-新任務：[SUMMARY:10字內描述][ROUTE:haiku|sonnet|opus]
-中止並重建：[ABORT:taskId][SUMMARY:任務描述][ROUTE:haiku|sonnet|opus]
+新任務：[SUMMARY:10字內描述][ROUTE:local|haiku|sonnet|opus]
+中止並重建：[ABORT:taskId][SUMMARY:任務描述][ROUTE:local|haiku|sonnet|opus]
 
 ## 路由規則（重要）
-- haiku  → **只用於** 純文字回答、閒聊、打招呼（不需要執行任何工具或命令）
-- sonnet → 所有需要執行操作的任務：查詢、檢查、管理、程式、除錯、系統分析
-- opus   → 深度研究、策略規劃、複雜多步驟推理
+- local  → **預設**：所有日常任務、查詢、系統管理、程式、除錯（使用本地 Qwen 模型）
+- haiku  → 用戶明確標記 @haiku，或需要 Claude 品質的簡單問答、翻譯、格式化
+- sonnet → 用戶明確標記 @sonnet，或複雜分析、高品質創作、多步驟規劃（Claude Sonnet）
+- opus   → 用戶明確標記 @opus，或深度研究、策略規劃、最高難度推理（Claude Opus）
+
+## 用戶路由指定（最高優先）
+若用戶訊息包含 @local / @haiku / @sonnet / @opus，**必須**使用對應路由，不得自行判斷覆蓋。
 
 ## 範例
-用戶：「你好」→ [SUMMARY:打招呼][ROUTE:haiku]
-用戶：「檢查 cron jobs」→ [SUMMARY:檢查cron狀態][ROUTE:sonnet]
-用戶：「分析這段程式碼」→ [SUMMARY:程式碼分析][ROUTE:sonnet]`;
+用戶：「你好」→ [SUMMARY:打招呼][ROUTE:local]
+用戶：「檢查 cron jobs」→ [SUMMARY:檢查cron狀態][ROUTE:local]
+用戶：「@haiku 幫我翻譯這段文字」→ [SUMMARY:翻譯文字][ROUTE:haiku]
+用戶：「@sonnet 分析這個架構」→ [SUMMARY:架構分析][ROUTE:sonnet]`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -154,12 +165,18 @@ function parseRoutingTags(text: string): ParsedTags {
   const lastLine = text.trimEnd().split("\n").pop() ?? "";
   const abortM   = lastLine.match(/\[ABORT:([^\]]+)\]/);
   const summaryM = lastLine.match(/\[SUMMARY:([^\]]{1,30})\]/);
-  const routeM   = lastLine.match(/\[ROUTE:(haiku|sonnet|opus)\]/i);
+  const routeM   = lastLine.match(/\[ROUTE:(local|haiku|sonnet|opus)\]/i);
   return {
     abortTaskId: abortM?.[1]?.trim(),
     summary:     summaryM?.[1]?.trim() ?? "任務",
     route:       (routeM?.[1]?.toLowerCase() as RouteTarget) ?? undefined,
   };
+}
+
+/** 從用戶原始訊息提取 @local/@haiku/@sonnet/@opus 強制路由指定 */
+function parseUserRouteTag(userText: string): RouteTarget | undefined {
+  const m = userText.match(/@(local|haiku|sonnet|opus)\b/i);
+  return m ? (m[1].toLowerCase() as RouteTarget) : undefined;
 }
 
 function elapsedStr(ms: number): string {
@@ -170,9 +187,10 @@ function elapsedStr(ms: number): string {
 function modelLabel(model: string): string {
   if (model.includes("opus"))   return "Opus";
   if (model.includes("sonnet")) return "Sonnet";
-  if (model.includes("coder"))  return "Coder";
-  if (model.includes("qwen3.5:27b") || model.includes("qwen3.5:35b")) return "Sonnet";
-  return "Haiku";
+  if (model.includes("haiku"))  return "Haiku";
+  if (model.includes("qwen3.5:27b")) return "Local";
+  if (model.includes("coder"))  return "Local";
+  return "Local";
 }
 
 function buildBoardText(board: ChannelBoard): string {
@@ -208,11 +226,13 @@ function buildBoardText(board: ChannelBoard): string {
 export default function register(api: any) {
   const cfg: ReceptionistConfig = api.pluginConfig ?? {};
 
-  const HAIKU_MODEL    = cfg.haikuModel  ?? DEFAULT_HAIKU_MODEL;
-  const SONNET_MODEL   = cfg.sonnetModel ?? DEFAULT_SONNET_MODEL;
-  const OPUS_MODEL     = cfg.opusModel   ?? DEFAULT_OPUS_MODEL;
-  const STATUS_INTERVAL = cfg.statusUpdateIntervalMs ?? DEFAULT_STATUS_INTERVAL_MS;
-  const BOARD_TTL       = cfg.boardTtlMs ?? DEFAULT_BOARD_TTL_MS;
+  const RECEPTIONIST_MODEL = cfg.receptionistModel ?? DEFAULT_RECEPTIONIST_MODEL;
+  const LOCAL_MODEL        = cfg.localModel  ?? DEFAULT_LOCAL_MODEL;
+  const HAIKU_MODEL        = cfg.haikuModel  ?? DEFAULT_HAIKU_MODEL;
+  const SONNET_MODEL       = cfg.sonnetModel ?? DEFAULT_SONNET_MODEL;
+  const OPUS_MODEL         = cfg.opusModel   ?? DEFAULT_OPUS_MODEL;
+  const STATUS_INTERVAL    = cfg.statusUpdateIntervalMs ?? DEFAULT_STATUS_INTERVAL_MS;
+  const BOARD_TTL          = cfg.boardTtlMs ?? DEFAULT_BOARD_TTL_MS;
 
   // boards: mainSessionKey → ChannelBoard
   const boards = new Map<string, ChannelBoard>();
@@ -351,7 +371,8 @@ export default function register(api: any) {
   function modelForRoute(route: RouteTarget | undefined): string {
     if (route === "opus")   return OPUS_MODEL;
     if (route === "sonnet") return SONNET_MODEL;
-    return HAIKU_MODEL;
+    if (route === "haiku")  return HAIKU_MODEL;
+    return LOCAL_MODEL;  // "local" or undefined → qwen3.5:27b
   }
 
   // ── Hook: capture accountId from inbound message ───────────────────────────
@@ -408,7 +429,7 @@ export default function register(api: any) {
     const activeTasks = board?.tasks.filter((t) => t.status === "running") ?? [];
 
     return {
-      modelOverride: HAIKU_MODEL,
+      modelOverride: RECEPTIONIST_MODEL,
       appendSystemContext: buildReceptionistPrompt(activeTasks),
     };
   });
@@ -447,8 +468,10 @@ export default function register(api: any) {
 
     const parsed = parseRoutingTags(assistantText);
     const { abortTaskId, summary } = parsed;
-    // If model forgot routing tags, default to sonnet (don't silently drop the request)
-    const route: RouteTarget = parsed.route ?? "sonnet";
+    // User @tag takes priority over receptionist's auto-routing
+    const userRoute = parseUserRouteTag(lastUserText);
+    // If model forgot routing tags, default to local (don't silently drop the request)
+    const route: RouteTarget = userRoute ?? parsed.route ?? "local";
 
     // ── Abort existing task ────────────────────────────────────────────────
     let mergedContext = "";
@@ -485,14 +508,6 @@ export default function register(api: any) {
         oldTask.endedAt  = Date.now();
         api.logger.info(`receptionist: aborted task ${abortTaskId}`);
       }
-    }
-
-    // Haiku handles it directly (no worker needed) — only when explicitly routed to haiku
-    if (route === "haiku") {
-      if (board.tasks.some((t) => t.status === "running")) {
-        await sendOrEditBoard(board);
-      }
-      return;
     }
 
     // ── Spawn worker ───────────────────────────────────────────────────────

@@ -7,6 +7,8 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "receptionistModel":      { "type": "string" },
+      "localModel":             { "type": "string" },
       "haikuModel":             { "type": "string" },
       "sonnetModel":            { "type": "string" },
       "opusModel":              { "type": "string" },
