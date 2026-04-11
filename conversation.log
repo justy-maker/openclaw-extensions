@@ -513,3 +513,40 @@ Gateway 啟動問題排查：
 結果：✅ 完全解決
 ================================================================================
 
+
+================================================================================
+日期：2026-04-10 ~ 2026-04-11
+原始對話：早安簡報測試 + Meta思考輪用 qwen 測試
+處理過程：
+
+【早安簡報 qwen3.5:27b-32k 測試】
+  問題背景：之前 4 次超時錯誤（consecutiveErrors: 4，lastErrorReason: timeout）
+  測試觸發：重啟 gateway，設 nextRunAtMs = now+10s
+  執行結果：成功完成（status: ok，consecutiveErrors: 0）
+  根因分析：
+    - 超時原因是 Gemini web_search 後端 503（非模型問題）
+    - Gemini 恢復後，qwen3.5:27b-32k 在 ~5 分鐘內完成任務
+  結論：qwen3.5:27b-32k 跑早安簡報沒問題，保持原設定
+
+【Meta思考輪 config 修正】
+  問題 1：delivery.channel: "last" 失敗
+    - isolated cron session 沒有「上次 Discord 頻道」脈絡
+    - 22:50:43 log: "message failed: Action send requ..."
+  問題 2：timeout 600s 不夠（qwen 需要 ~590s）
+  修正：
+    - delivery 改為固定頻道 discord to: 1474332111388540980（#財務部）
+    - timeoutSeconds: 600 → 900
+    - model 確認為 ollama/qwen3.5:27b-32k
+
+【Meta思考輪 qwen3.5:27b-32k 測試】
+  執行 1（22:42 CST）：timeout 因舊設定 600s 不夠
+  執行 2（02:00 CST）：成功完成（status: ok，consecutiveErrors: 0）
+    - lastDuration: 590849ms（~9.8 分鐘，在 900s 內）
+    - Gemini web_search 在開始時失敗，但模型繼續執行完成
+    - Discord #財務部 收到結果
+  途中插曲：gateway 在 01:50 卡住（log 停止寫入）→ 手動 kill + 重啟
+
+結果：✅ 兩項測試均成功
+  - 早安簡報：qwen3.5:27b-32k 可用，保持原設定不變
+  - Meta思考輪：timeout 900s + 固定 Discord 頻道 → 完整運行
+================================================================================
