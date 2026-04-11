@@ -127,6 +127,21 @@ export default function register(api: any) {
     const from: string = event.from ?? "";
     const ts = Date.now();
 
+    // 0. 如果訊息 @mention 了其他人（非 bot 自身），忽略不回應
+    const BOT_ID = "1469102666272473152";
+    const mentionPattern = /<@!?(\d+)>/g;
+    let mentionMatch: RegExpExecArray | null;
+    let hasOtherMention = false;
+    while ((mentionMatch = mentionPattern.exec(content)) !== null) {
+      if (mentionMatch[1] !== BOT_ID) {
+        hasOtherMention = true;
+        break;
+      }
+    }
+    if (hasOtherMention) {
+      return { reject: true };
+    }
+
     // 1. 訊息長度檢查
     if (content.length > stmMaxChars) {
       return {
