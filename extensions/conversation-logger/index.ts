@@ -139,6 +139,9 @@ export default function register(api: any) {
       }
     }
     if (hasOtherMention) {
+      // 先記錄再 reject，保留完整訊息歷史
+      const rejectRecord = { ts, role: "user", from, channel: channelId, conversationId, content, rejected: true, reason: "other-mention" };
+      try { appendJsonl(getLogFilePath(logDir, channelId, conversationId), rejectRecord); } catch {}
       return { reject: true };
     }
 
