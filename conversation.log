@@ -515,6 +515,78 @@ Gateway 啟動問題排查：
 
 
 ================================================================================
+日期：2026-04-26 06:00 ~ 14:00
+問題描述：.60 DGX Spark GPU 修復、OpenClaw 全面重建與優化
+
+【.60 DGX Spark 修復】
+  問題：192.168.2.60 瀏覽器無法連線（ERR_CONNECTION_REFUSED）
+  根因：DGX Dashboard port 80 僅綁在 10.92.7.127（熱點 AP）和 127.0.0.1，非主網卡
+  OOBE 登入後 SSH 斷線，authorized_keys 被清空，密碼也變更
+  解法：
+    - SSH key 重新加入 authorized_keys（ysi@192.168.2.60）
+    - 確認 GPU 驅動正常：NVIDIA GB10，Driver 580.142，CUDA 13.0
+    - Ollama 偵測到 121.6 GiB unified memory，預設 context 262,144 tokens
+  性能測試：gemma4:26b
+    .50（Jetson AGX Thor，128GB）：35.9 tok/s
+    .60（DGX Spark GB10，121.6GB）：66.7 tok/s（GPU 啟動後 5 倍提升）
+  備註：.50 實際是 128GB unified，非之前記錄的 64GB
+
+【OpenClaw .73 重新指向 .60】
+  - openclaw.json 兩處 Ollama URL 從 192.168.2.50 改為 192.168.2.60
+  - nomic-embed-text 下載至 .60（274MB）
+  - memory-lancedb-pro embedding/retrieval 恢復正常（OK）
+
+【模型調整】
+  - Heartbeat 模型：ollama/qwen2.5:14b → ollama/gemma4:e4b → ollama/gemma4:26b
+    （gemma4:e4b 在 .60 不存在，改為 gemma4:26b）
+  - 週六搶位：ollama/qwen2.5:14b → ollama/gemma4:26b
+  - Meta思考輪：ollama/qwen3.5-27b-32k-nothink → ollama/gemma4:26b
+
+【Meta思考輪還原】
+  - 還原 cron job（ID: 416c2494）至 jobs.json
+  - 模型更新為 gemma4:26b
+  - THINKING-LOOP-PROMPT.md 完整，歷史 results/ 完整保留
+  - 今晚 20:00 自動執行
+
+【Exec Approval 修復】
+  問題：「Exec approval is required, but chat exec approvals are not enabled on Discord」
+  排查過程：
+    - native: "allow" 格式錯誤 → 改為 native: true
+    - execApproval（單數）是無效 key → 改為 execApprovals（複數）
+  最終修正：channels.discord.execApprovals: {enabled: true, approvers: ["1005773185020612729"], target: "dm"}
+  效果：exec approval 透過 Discord DM 私訊軒哥審核
+
+【AGENTS.md 知識補充】
+  新增「OpenClaw 系統知識」章節：
+  - 說明 cron job = OpenClaw jobs.json，不是系統 crontab
+  - 說明模型架構（.60 主力，.50 備援）
+  - 說明 gateway 管理方式
+
+【Heartbeat 系統重建】
+  - 頻率：15m → 5m
+  - Prompt：改為讀取 HEARTBEAT.md 執行任務
+  建立任務管理系統（強制機械執行，不靠 AI 判斷）：
+    tasks/active_registry.json  只存 RUNNING/PENDING 任務
+    tasks/archive/              COMPLETED/FAILED 自動歸檔
+    tasks/archive_completed.sh  歸檔腳本（bash → Python）
+    tasks/_archive_runner.py    實際邏輯
+    tasks/heartbeat.log         每次 heartbeat 留下一行紀錄
+
+【workspace 備份推送 GitHub】
+  路徑：~/.openclaw-backup-20260425/workspace
+  Remote：https://github.com/justy-maker/openclaw-workspace.git
+  分支：main
+  Commit：cd35150a — 同步備份前最後狀態（memory 4/10-4/24、ai-gym-booking、research）
+  備註：GitHub token 已更新，推送成功
+
+結果：✅ 全部完成
+  - .60 GPU 運作正常，成為主力推理機（66.7 tok/s）
+  - OpenClaw .73 全面切換至 .60，記憶系統正常
+  - Heartbeat 每 5 分鐘，帶任務紀錄
+  - Meta思考輪今晚 20:00 重啟
+================================================================================
+
+================================================================================
 日期：2026-04-10 ~ 2026-04-11
 原始對話：早安簡報測試 + Meta思考輪用 qwen 測試
 處理過程：
